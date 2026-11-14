@@ -1,0 +1,819 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  legalName   String?
+  logoUrl     String?
+  websiteUrl  String?
+  timezone    String   @default("Asia/Kolkata")
+  planTier    String   @default("growth")
+  status      String   @default("active") // active, suspended, trial
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches       Branch[]
+  tenantUsers    TenantUser[]
+  businessFacts  BusinessFact[]
+  contentItems   ContentItem[]
+  contacts       Contact[]
+  leads          Lead[]
+  conversations  Conversation[]
+  integrations   Integration[]
+  auditLogs      AuditLog[]
+  followUpTasks  FollowUpTask[]
+  approvals      Approval[]
+  gbpReviews     GbpReview[]
+  seoKeywords    LocalSeoKeyword[]
+  messageTemplates MessageTemplate[]
+  entitlementsJson String? // JSON override of default plan tier
+  gbpRecommendations GbpProfileRecommendation[]
+  gbpReviewRequests GbpReviewRequest[]
+  mediaAssets MediaAsset[]
+  gbpPhotoSchedules GbpPhotoSchedule[]
+  gbpMetricSnapshots GbpMetricSnapshot[]
+  chatAgentSettings ChatAgentSettings[]
+  bookingSlots BookingSlot[]
+  tourBookings CampusTourBooking[]
+  followUpRules ConversationFollowUpRule[]
+  marketingCampaigns MarketingCampaign[]
+  campaignAssets CampaignAsset[]
+  automationWorkflows AutomationWorkflow[]
+
+  @@index([status])
+}
+
+model Branch {
+  id               String   @id @default(uuid())
+  tenantId         String
+  name             String
+  slug             String
+  addressLine1     String
+  addressLine2     String?
+  city             String
+  state            String
+  postalCode       String
+  phone            String
+  email            String
+  operatingHours      String?  // JSON formatted operating hours
+  postingScheduleJson String?  // JSON formatted posting schedule preferences
+  timezone            String?  @default("Asia/Kolkata")
+  googlePlaceId       String?
+  googleLocationId String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchUsers   BranchUser[]
+  businessFacts BusinessFact[]
+  leads         Lead[]
+  contentItems  ContentItem[]
+  conversations Conversation[]
+  gbpReviews    GbpReview[]
+  seoKeywords   LocalSeoKeyword[]
+  gbpRecommendations GbpProfileRecommendation[]
+  gbpReviewRequests GbpReviewRequest[]
+  mediaAssets MediaAsset[]
+  gbpPhotoSchedules GbpPhotoSchedule[]
+  gbpMetricSnapshots GbpMetricSnapshot[]
+  chatAgentSettings ChatAgentSettings?
+  bookingSlots BookingSlot[]
+  tourBookings CampusTourBooking[]
+  followUpRules ConversationFollowUpRule[]
+  campaignAssets CampaignAsset[]
+  automationWorkflows AutomationWorkflow[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  isSuperAdmin Boolean   @default(false)
+  mfaEnabled   Boolean   @default(false)
+  mfaSecret    String?
+  status       String    @default("active")
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenantUsers        TenantUser[]
+  assignedLeads      Lead[]
+  leadActivities     LeadActivity[]
+  followUpTasks      FollowUpTask[]
+  assignedConvos     Conversation[]
+  sentMessages       Message[]
+  createdContent     ContentItem[]
+  contentVersions    ContentVersion[]
+  requestedApprovals Approval[]       @relation("ApprovalRequester")
+  reviewedApprovals  Approval[]       @relation("ApprovalReviewer")
+  approvalEvents     ApprovalEvent[]
+  verifiedFacts      BusinessFact[]
+  auditLogs          AuditLog[]
+
+  @@index([email])
+}
+
+model Role {
+  id          String   @id // 'super_admin', 'agency_admin', 'preschool_owner', 'branch_manager', 'admission_counsellor', 'content_reviewer'
+  name        String
+  description String
+
+  rolePermissions RolePermission[]
+  tenantUsers     TenantUser[]
+}
+
+model Permission {
+  id          String @id // 'leads.view', 'leads.edit', 'content.approve', etc.
+  description String
+  module      String
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model TenantUser {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  roleId    String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role         @relation(fields: [roleId], references: [id])
+  branchUsers BranchUser[]
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+}
+
+model BranchUser {
+  id           String   @id @default(uuid())
+  branchId     String
+  tenantUserId String
+  createdAt    DateTime @default(now())
+
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, tenantUserId])
+}
+
+model BusinessFact {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  branchId           String?
+  category           String    // curriculum, facilities, timings, fees, admissions, brand_tone, safety
+  factKey            String
+  factValue          String
+  verificationSource String
+  isVerified         Boolean   @default(false)
+  verifiedById       String?
+  verifiedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  verifiedBy User?   @relation(fields: [verifiedById], references: [id])
+
+  @@unique([tenantId, branchId, factKey])
+  @@index([tenantId, category])
+}
+
+model ContentItem {
+  id            String   @id @default(uuid())
+  tenantId      String
+  branchId      String?
+  channel       String   // google_business_profile, instagram, facebook, whatsapp, blog
+  contentType   String   // post, caption, reply, festival_greeting, blog_outline
+  title         String?
+  campaignName  String?
+  currentStatus String   @default("draft") // draft, pending_approval, approved, scheduled, publishing, published, rejected, changes_requested, failed, cancelled
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch?          @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy User?            @relation(fields: [createdById], references: [id])
+  versions  ContentVersion[]
+  approvals Approval[]
+
+  @@index([tenantId, currentStatus])
+}
+
+model ContentVersion {
+  id            String   @id @default(uuid())
+  contentItemId String
+  versionNumber Int
+  headline      String?
+  bodyText      String
+  callToAction  String?
+  targetUrl     String?
+  mediaUrls     String?  // JSON array of strings
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+  approvals   Approval[]
+
+  @@unique([contentItemId, versionNumber])
+}
+
+model Approval {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  contentItemId       String
+  contentVersionId    String
+  status              String    @default("pending_approval") // pending_approval, approved, changes_requested, rejected, published, failed, cancelled
+  requestedById       String
+  reviewedById        String?
+  reviewedAt          DateTime?
+  scheduledFor        DateTime?
+  publishedAt         DateTime?
+  providerPostId      String?
+  providerErrorDetail String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contentItem    ContentItem     @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  contentVersion ContentVersion  @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+  requestedBy    User            @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  reviewedBy     User?           @relation("ApprovalReviewer", fields: [reviewedById], references: [id])
+  events         ApprovalEvent[]
+
+  @@index([tenantId, status])
+}
+
+model ApprovalEvent {
+  id         String   @id @default(uuid())
+  approvalId String
+  actorId    String
+  action     String   // submitted, approved, rejected, changes_requested, published
+  comments   String?
+  createdAt  DateTime @default(now())
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  actor    User     @relation(fields: [actorId], references: [id])
+}
+
+model Contact {
+  id              String    @id @default(uuid())
+  tenantId        String
+  fullName        String
+  normalizedPhone String    // E.164 e.g. +919876543210
+  email           String?
+  whatsappOptIn   Boolean   @default(true)
+  optInTimestamp  DateTime?
+  optInSource     String?   // website_form, walk_in, whatsapp_inbound
+  isSuppressed    Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads         Lead[]
+  conversations Conversation[]
+  gbpReviewRequests GbpReviewRequest[]
+  campaignRecipients CampaignRecipient[]
+
+  @@unique([tenantId, normalizedPhone])
+  @@index([tenantId, normalizedPhone])
+}
+
+model Lead {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  branchId             String
+  contactId            String
+  childName            String?
+  childAgeBand         String?   // toddler_1_2, playgroup_2_3, nursery_3_4, kg_4_6, daycare
+  source               String    // whatsapp, google_business, facebook_ads, walk_in, website, referral
+  campaignName         String?
+  pipelineStage        String    @default("new_enquiry")
+  // new_enquiry, contacted, interested, visit_scheduled, visit_completed, admission_pending, converted, not_interested, invalid, duplicate, lost, on_hold
+  assignedCounsellorId String?
+  visitScheduledAt     DateTime?
+  visitOutcome         String?
+  admissionConvertedAt DateTime?
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant             Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch             Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  contact            Contact        @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  assignedCounsellor User?          @relation(fields: [assignedCounsellorId], references: [id])
+  activities         LeadActivity[]
+  followUpTasks      FollowUpTask[]
+  tourBookings       CampusTourBooking[]
+
+  @@index([tenantId, branchId, pipelineStage])
+  @@index([tenantId, createdAt])
+}
+
+model LeadActivity {
+  id           String   @id @default(uuid())
+  leadId       String
+  actorId      String?
+  activityType String   // stage_change, counsellor_assigned, call_logged, note_added, visit_scheduled, whatsapp_sent
+  metadata     String?  // JSON string
+  createdAt    DateTime @default(now())
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([leadId])
+}
+
+model FollowUpTask {
+  id          String    @id @default(uuid())
+  tenantId    String
+  leadId      String
+  assignedTo  String
+  dueDate     DateTime
+  title       String
+  status      String    @default("pending") // pending, completed, overdue, cancelled
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead     Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee User   @relation(fields: [assignedTo], references: [id])
+
+  @@index([tenantId, assignedTo, dueDate, status])
+}
+
+model Conversation {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchId       String?
+  contactId      String
+  assignedUserId String?
+  lastMessageAt  DateTime @default(now())
+  status         String   @default("open") // open, closed, snooze
+  assignedMode   String   @default("ai_bot") // ai_bot, human_agent
+  detectedLanguage String @default("en") // en, hi, hinglish
+  quietChatAttempts Int   @default(0)
+  lastInboundAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?   @relation(fields: [branchId], references: [id])
+  contact      Contact   @relation(fields: [contactId], references: [id])
+  assignedUser User?     @relation(fields: [assignedUserId], references: [id])
+  messages     Message[]
+
+  @@unique([tenantId, contactId])
+}
+
+model Message {
+  id                String   @id @default(uuid())
+  conversationId    String
+  direction         String   // inbound, outbound
+  senderType        String   // contact, user, system_template
+  senderId          String?
+  messageType       String   @default("text") // text, template, image, document
+  body              String
+  providerMessageId String?  @unique // WhatsApp WAMID
+  deliveryStatus    String   @default("sent") // queued, sent, delivered, read, failed
+  detectedLanguage  String?
+  translationText   String?
+  errorDetails      String?
+  createdAt         DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
+
+model Integration {
+  id                String   @id @default(uuid())
+  tenantId          String
+  provider          String   // google_business_profile, meta_whatsapp, openai
+  status            String   @default("not_connected") // not_connected, active, error, revoked
+  externalAccountId String?
+  configMetadata    String?  // JSON string
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  oauthToken OAuthToken?
+
+  @@unique([tenantId, provider])
+}
+
+model OAuthToken {
+  id                    String    @id @default(uuid())
+  integrationId         String    @unique
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  tokenExpiresAt        DateTime?
+  tokenScope            String?
+  updatedAt             DateTime  @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  tenantId     String?
+  actorId      String?
+  action       String   // auth.login, approval.approve, leads.export, etc.
+  resourceType String   // lead, content_item, integration, user
+  resourceId   String
+  ipAddress    String?
+  userAgent    String?
+  safeMetadata String?  // JSON string (sanitized)
+  createdAt    DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, action, createdAt])
+}
+
+model GbpReview {
+  id              String    @id @default(uuid())
+  tenantId        String
+  branchId        String
+  googleReviewId  String?   @unique
+  authorName      String
+  authorPhotoUrl  String?
+  starRating      Int       // 1 - 5
+  comment         String?
+  reviewTimestamp DateTime  @default(now())
+  replyText       String?
+  replyStatus     String    @default("pending_draft") // pending_draft, drafted, approved, published
+  replyApprovedAt DateTime?
+  sentimentScore  Float?
+  detectedLanguage String?
+  escalationReason String?
+  isAutoReplied   Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, starRating])
+}
+
+model LocalSeoKeyword {
+  id                     String   @id @default(uuid())
+  tenantId               String
+  branchId               String
+  keyword                String
+  searchIntent           String   // local_near_me, admissions_open, program_specific, curriculum
+  monthlySearchVolumeEst Int      @default(0)
+  difficultyScore        Int      @default(0) // 1 - 100
+  currentRankEst         Int?     // estimated Google Map pack position
+  targetPageUrl          String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, keyword])
+  @@index([tenantId, branchId])
+}
+
+model MessageTemplate {
+  id             String   @id @default(uuid())
+  tenantId       String
+  templateName   String
+  language       String   @default("en")
+  category       String   // UTILITY, MARKETING
+  headerText     String?
+  bodyText       String   // e.g. "Dear {{1}}, thank you for inquiring about {{2}} at Bright Star Preschool..."
+  footerText     String?
+  metaStatus     String   @default("APPROVED") // PENDING, APPROVED, REJECTED
+  variableSample String?  // JSON sample values
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, templateName, language])
+  @@index([tenantId, category])
+}
+
+// -------------------------------------------------------------
+// THREE CONNECTED AI AGENTS EXTENSION MODELS
+// -------------------------------------------------------------
+
+// 1. Google Business Profile AI
+model GbpProfileRecommendation {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  branchId             String
+  field                String   // description, opening_hours, categories, services
+  currentValue         String?
+  proposedValue        String
+  keywordsUsed         String   // JSON array of strings
+  missingFactsDetected String?  // JSON array of strings
+  approvalStatus       String   @default("draft") // draft, pending_approval, approved, applied, rejected
+  appliedAt            DateTime?
+  providerResponse     String?  // JSON string
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, approvalStatus])
+}
+
+model GbpReviewRequest {
+  id              String   @id @default(uuid())
+  tenantId        String
+  branchId        String
+  contactId       String
+  channel         String   @default("whatsapp") // whatsapp, qr_scan, direct_link
+  reviewLink      String
+  status          String   @default("sent") // created, sent, opened, completed
+  sentAt          DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, status])
+}
+
+model MediaAsset {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  branchId             String
+  title                String
+  category             String   // classroom, playground, activity, event, facility
+  fileUrl              String
+  thumbnailUrl         String?
+  suggestedCaption     String?
+  suggestedAltText     String?
+  childConsentVerified Boolean  @default(false) // Mandatory per DPDP Act
+  status               String   @default("active") // active, restricted, archived
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  schedules GbpPhotoSchedule[]
+
+  @@index([tenantId, branchId, category])
+}
+
+model GbpPhotoSchedule {
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchId       String
+  mediaAssetId   String
+  scheduledFor   DateTime
+  publishedAt    DateTime?
+  status         String    @default("scheduled") // scheduled, publishing, published, failed, cancelled
+  providerPostId String?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, status, scheduledFor])
+}
+
+model GbpMetricSnapshot {
+  id                String   @id @default(uuid())
+  tenantId          String
+  branchId          String
+  metricDate        DateTime
+  searchImpressions Int      @default(0)
+  mapsViews         Int      @default(0)
+  callClicks        Int      @default(0)
+  websiteClicks     Int      @default(0)
+  directionClicks   Int      @default(0)
+  reviewCount       Int      @default(0)
+  averageRating     Float    @default(0.0)
+  replyCoveragePct  Float    @default(0.0)
+  isSimulated       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, metricDate])
+  @@index([tenantId, branchId, metricDate])
+}
+
+// 2. WhatsApp Chat AI
+model ChatAgentSettings {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  branchId            String   @unique
+  aiEnabled           Boolean  @default(true)
+  confidenceThreshold Float    @default(0.75) // 0.0 - 1.0
+  operatingMode       String   @default("ai_first") // ai_first, human_first, hybrid
+  supportedLanguages  String   @default("en,hi,hinglish")
+  handoffKeywords     String   @default("human,staff,talk to teacher,fees discount,complaint")
+  quietHoursStart     String?  @default("21:00") // 9 PM
+  quietHoursEnd       String?  @default("08:00") // 8 AM
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId])
+}
+
+model BookingSlot {
+  id              String   @id @default(uuid())
+  tenantId        String
+  branchId        String
+  slotTime        DateTime
+  durationMinutes Int      @default(30)
+  maxCapacity     Int      @default(1)
+  bookedCount     Int      @default(0)
+  isBlocked       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch   Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  bookings CampusTourBooking[]
+
+  @@unique([branchId, slotTime])
+  @@index([tenantId, branchId, slotTime])
+}
+
+model CampusTourBooking {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  branchId           String
+  leadId             String
+  slotId             String
+  serviceType        String    @default("school_tour") // school_tour, parent_counselling, open_house
+  status             String    @default("confirmed") // confirmed, cancelled, completed, no_show, rescheduled
+  confirmationWamid  String?
+  reminderSent24h    Boolean   @default(false)
+  reminderSent2h     Boolean   @default(false)
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  lead   Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  slot   BookingSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, status])
+}
+
+model ConversationFollowUpRule {
+  id                     String   @id @default(uuid())
+  tenantId               String
+  branchId               String?
+  name                   String
+  triggerInactivityHours Int      @default(24)
+  templateName           String
+  maxAttempts            Int      @default(2)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+}
+
+// 3. WhatsApp Marketing AI
+model MarketingCampaign {
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchId       String?
+  name           String
+  occasion       String    // admissions_open, summer_camp, diwali, annual_day, winter_camp
+  templateName   String
+  targetAgeBands String?   // JSON array e.g. ["toddler_1_2", "nursery_3_4"]
+  targetStages   String?   // JSON array e.g. ["new_enquiry", "interested"]
+  scheduledAt    DateTime?
+  status         String    @default("draft") // draft, pending_approval, approved, sending, completed, cancelled
+  totalAudience  Int       @default(0)
+  sentCount      Int       @default(0)
+  deliveredCount Int       @default(0)
+  readCount      Int       @default(0)
+  repliedCount   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipients CampaignRecipient[]
+
+  @@index([tenantId, status])
+}
+
+model CampaignRecipient {
+  id                String    @id @default(uuid())
+  campaignId        String
+  contactId         String
+  providerMessageId String?
+  status            String    @default("queued") // queued, sent, delivered, read, failed, suppressed
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  repliedAt         DateTime?
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+
+  campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+}
+
+model CampaignAsset {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  branchId             String?
+  title                String
+  assetType            String   // brochure_pdf, fee_structure_pdf, curriculum_overview
+  targetAgeBand        String?  // toddler_1_2, playgroup_2_3, nursery_3_4, kg_4_6, all
+  fileUrl              String
+  fileSizeKb           Int      @default(0)
+  childConsentVerified Boolean  @default(true) // Brochure child imagery consent
+  status               String   @default("approved")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, assetType])
+}
+
+model AutomationWorkflow {
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchId       String?
+  name           String
+  triggerEvent   String    // lead_created, tour_booked, chat_quiet, review_received
+  conditionsJson String    // JSON string e.g. { "leadAge": "nursery", "hours": 24 }
+  actionsJson    String    // JSON string e.g. [{ "action": "send_whatsapp_template", "template": "tour_reminder" }]
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch?                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  logs   WorkflowExecutionLog[]
+
+  @@index([tenantId, isActive, triggerEvent])
+}
+
+model WorkflowExecutionLog {
+  id         String   @id @default(uuid())
+  workflowId String
+  triggerId  String   // leadId, bookingId, conversationId
+  status     String   // success, skipped_opt_out, error
+  details    String?  // JSON string
+  executedAt DateTime @default(now())
+
+  workflow AutomationWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId, executedAt])
+}
